@@ -1,0 +1,4 @@
+frota.db
+relatorios_gerados/
+__pycache__/
+*.pyc
