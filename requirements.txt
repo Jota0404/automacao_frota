@@ -7,3 +7,4 @@ openpyxl>=3.1.0       # Geração/leitura de planilhas Excel (.xlsx)
 docxtpl>=0.16.0        # Geração de fichas individuais em Word a partir de templates (.docx)
 python-docx>=1.1.0     # Manipulação de documentos Word (usado internamente pelo docxtpl e para ajustes finos)
 sqlalchemy>=2.0.0      # ORM/engine para persistência dos dados no banco SQLite
+tkinterdnd2>=0.4.3    # Arrastar e soltar arquivos no frontend desktop Windows

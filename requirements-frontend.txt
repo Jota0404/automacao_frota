@@ -1,0 +1,3 @@
+# Dependências adicionais para o frontend desktop
+# Instale junto com requirements.txt para habilitar arrastar e soltar no Windows.
+tkinterdnd2>=0.4.3
