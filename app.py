@@ -15,6 +15,12 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+except ImportError:  # pragma: no cover - fallback para ambientes sem suporte DnD
+    DND_FILES = None
+    TkinterDnD = None
+
 import config
 import database
 import main as processamento
@@ -22,8 +28,10 @@ import main as processamento
 TITLE = "Automação de Frota"
 SUBTITLE = "Controle e geração de relatórios de abastecimento"
 
+BaseTk = TkinterDnD.Tk if TkinterDnD is not None else tk.Tk
 
-class App(tk.Tk):
+
+class App(BaseTk):
     def __init__(self) -> None:
         super().__init__()
         self.title(TITLE)
@@ -70,25 +78,39 @@ class App(tk.Tk):
         self.content.pack(fill="both", expand=True)
 
     def clear(self) -> None:
-        for w in self.content.winfo_children():
-            w.destroy()
+        for widget in self.content.winfo_children():
+            widget.destroy()
 
     def card(self) -> ttk.Frame:
-        c = ttk.Frame(self.content, style="Card.TFrame", padding=28)
-        c.pack(fill="x", pady=(0, 18))
-        return c
+        card = ttk.Frame(self.content, style="Card.TFrame", padding=28)
+        card.pack(fill="x", pady=(0, 18))
+        return card
 
     def show_home(self) -> None:
         self.clear()
-        c = self.card()
-        ttk.Label(c, text="Novo processamento", style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(c, text="Selecione o relatório CSV mensal exportado do Prime Benefícios.", style="CardText.TLabel").pack(anchor="w", pady=(5, 20))
+        card = self.card()
+        ttk.Label(card, text="Novo processamento", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            card,
+            text="Selecione o relatório CSV mensal exportado do Prime Benefícios.",
+            style="CardText.TLabel",
+        ).pack(anchor="w", pady=(5, 20))
 
-        drop = tk.Frame(c, bg="#F7F9FC", highlightbackground="#D7DEE8", highlightthickness=1)
+        drop = tk.Frame(card, bg="#F7F9FC", highlightbackground="#D7DEE8", highlightthickness=1)
         drop.pack(fill="x", ipady=28)
         tk.Label(drop, text="CSV", bg="#F7F9FC", fg="#1F5EFF", font=("Segoe UI", 20, "bold")).pack(pady=(4, 8))
-        tk.Label(drop, text="Selecione um arquivo .csv para iniciar", bg="#F7F9FC", fg="#697386", font=("Segoe UI", 10)).pack()
+        tk.Label(
+            drop,
+            text="Arraste e solte o arquivo aqui ou selecione manualmente",
+            bg="#F7F9FC",
+            fg="#697386",
+            font=("Segoe UI", 10),
+        ).pack()
         ttk.Button(drop, text="Selecionar CSV", style="Secondary.TButton", command=self.select_csv).pack(pady=(14, 4))
+
+        if DND_FILES is not None and hasattr(drop, "drop_target_register"):
+            drop.drop_target_register(DND_FILES)
+            drop.dnd_bind("<<Drop>>", self._on_drop)
 
         self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=22)
         self.file_name = ttk.Label(self.file_box, text="", style="File.TLabel")
@@ -104,13 +126,34 @@ class App(tk.Tk):
         ttk.Label(actions, text="O CSV será processado e arquivado automaticamente.", style="Subtitle.TLabel").pack(side="left", padx=(14, 0))
 
     def select_csv(self) -> None:
-        selected = filedialog.askopenfilename(title="Selecionar relatório CSV", filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")])
-        if not selected:
+        selected = filedialog.askopenfilename(
+            title="Selecionar relatório CSV",
+            filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")],
+        )
+        if selected:
+            self._selecionar_caminho(Path(selected))
+
+    def _on_drop(self, event) -> None:
+        try:
+            caminhos = self.tk.splitlist(event.data)
+        except tk.TclError:
+            caminhos = [event.data]
+
+        csv_paths = [Path(caminho) for caminho in caminhos if caminho]
+        if len(csv_paths) != 1:
+            messagebox.showwarning(TITLE, "Arraste apenas um arquivo CSV por vez.")
             return
-        path = Path(selected)
+
+        self._selecionar_caminho(csv_paths[0])
+
+    def _selecionar_caminho(self, path: Path) -> None:
         if path.suffix.lower() != ".csv":
             messagebox.showerror(TITLE, "Selecione um arquivo CSV válido.")
             return
+        if not path.is_file():
+            messagebox.showerror(TITLE, "O arquivo selecionado não foi encontrado.")
+            return
+
         self.csv = path
         self.file_box.pack(fill="x", pady=(0, 18))
         self.file_name.configure(text=path.name)
@@ -127,13 +170,13 @@ class App(tk.Tk):
 
     def show_processing(self) -> None:
         self.clear()
-        c = self.card()
-        ttk.Label(c, text="Gerando relatórios...", style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(c, text="O sistema está processando o arquivo e gerando os documentos.", style="CardText.TLabel").pack(anchor="w", pady=(5, 22))
-        self.progress = ttk.Progressbar(c, mode="indeterminate", style="Progress.Horizontal.TProgressbar")
+        card = self.card()
+        ttk.Label(card, text="Gerando relatórios...", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(card, text="O sistema está processando o arquivo e gerando os documentos.", style="CardText.TLabel").pack(anchor="w", pady=(5, 22))
+        self.progress = ttk.Progressbar(card, mode="indeterminate", style="Progress.Horizontal.TProgressbar")
         self.progress.pack(fill="x", pady=(0, 18))
         self.progress.start(10)
-        ttk.Label(c, text="Processando CSV...", style="Status.TLabel").pack(anchor="w")
+        ttk.Label(card, text="Processando CSV...", style="Status.TLabel").pack(anchor="w")
 
     def _worker(self) -> None:
         assert self.csv is not None
@@ -142,6 +185,7 @@ class App(tk.Tk):
         success = False
         detail = ""
         staged: Path | None = None
+
         try:
             for folder in config.TODAS_AS_PASTAS:
                 folder.mkdir(parents=True, exist_ok=True)
@@ -153,15 +197,15 @@ class App(tk.Tk):
                 staged = config.PASTA_ENTRADA / f"{self.csv.stem}_{stamp}{self.csv.suffix}"
             shutil.copy2(self.csv, staged)
 
-            before = {p: p.stat().st_mtime for p in config.PASTA_RELATORIOS_GERADOS.glob("*") if p.is_file()}
+            before = {path: path.stat().st_mtime for path in config.PASTA_RELATORIOS_GERADOS.glob("*") if path.is_file()}
             with redirect_stdout(out), redirect_stderr(err):
                 success = processamento.processar_arquivo_csv(staged)
 
-            generated = [p for p in config.PASTA_RELATORIOS_GERADOS.glob("*") if p.is_file() and p.stat().st_mtime >= started]
+            generated = [path for path in config.PASTA_RELATORIOS_GERADOS.glob("*") if path.is_file() and path.stat().st_mtime >= started]
             for path, old_mtime in before.items():
                 if path.exists() and path not in generated and path.stat().st_mtime > old_mtime:
                     generated.append(path)
-            self.generated = sorted(set(generated), key=lambda p: p.name.lower())
+            self.generated = sorted(set(generated), key=lambda path: path.name.lower())
 
             if not success:
                 detail = out.getvalue().strip() or err.getvalue().strip() or "O arquivo não pôde ser processado."
@@ -172,6 +216,7 @@ class App(tk.Tk):
                     staged.unlink()
                 except OSError:
                     pass
+
         self.after(0, self.finish, success, detail)
 
     def finish(self, success: bool, detail: str) -> None:
@@ -185,11 +230,11 @@ class App(tk.Tk):
 
     def show_success(self) -> None:
         self.clear()
-        c = self.card()
-        ttk.Label(c, text="✓", style="Success.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
-        ttk.Label(c, text="Relatórios gerados!", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
-        ttk.Label(c, text=f"{len(self.generated)} arquivo(s) foram gerados com sucesso.", style="CardText.TLabel").pack(anchor="w", pady=(0, 18))
-        listing = tk.Frame(c, bg="#F7F9FC", highlightbackground="#E1E6ED", highlightthickness=1)
+        card = self.card()
+        ttk.Label(card, text="✓", style="Success.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
+        ttk.Label(card, text="Relatórios gerados!", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
+        ttk.Label(card, text=f"{len(self.generated)} arquivo(s) foram gerados com sucesso.", style="CardText.TLabel").pack(anchor="w", pady=(0, 18))
+        listing = tk.Frame(card, bg="#F7F9FC", highlightbackground="#E1E6ED", highlightthickness=1)
         listing.pack(fill="x")
         for path in self.generated:
             tk.Label(listing, text=f"• {path.name}", bg="#F7F9FC", fg="#344054", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=5)
@@ -204,16 +249,17 @@ class App(tk.Tk):
 
     def show_error(self, detail: str) -> None:
         self.clear()
-        c = self.card()
-        ttk.Label(c, text="!", style="Error.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
-        ttk.Label(c, text="Não foi possível gerar os relatórios", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
-        ttk.Label(c, text="Confira os detalhes abaixo.", style="CardText.TLabel").pack(anchor="w", pady=(0, 14))
-        box = tk.Frame(c, bg="#FFF5F5", highlightbackground="#F1C5C5", highlightthickness=1)
+        card = self.card()
+        ttk.Label(card, text="!", style="Error.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
+        ttk.Label(card, text="Não foi possível gerar os relatórios", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
+        ttk.Label(card, text="Confira os detalhes abaixo.", style="CardText.TLabel").pack(anchor="w", pady=(0, 14))
+        box = tk.Frame(card, bg="#FFF5F5", highlightbackground="#F1C5C5", highlightthickness=1)
         box.pack(fill="both", expand=True)
         text = tk.Text(box, height=12, wrap="word", bg="#FFF5F5", fg="#7A271A", relief="flat", borderwidth=0, font=("Consolas", 9), padx=12, pady=10)
         text.pack(fill="both", expand=True)
         text.insert("1.0", detail)
         text.configure(state="disabled")
+
         actions = ttk.Frame(self.content, style="App.TFrame")
         actions.pack(fill="x", pady=(4, 0))
         ttk.Button(actions, text="VOLTAR", style="Secondary.TButton", command=self.show_home).pack(side="left")
@@ -224,7 +270,7 @@ class App(tk.Tk):
         try:
             os.startfile(str(config.PASTA_RELATORIOS_GERADOS))
         except AttributeError:
-            messagebox.showinfo(TITLE, str(config.PASTA_RELATORIOS_GERADOS))
+            messagebox.showinfo(TITLE, f"Relatórios em:\n{config.PASTA_RELATORIOS_GERADOS}")
 
     def copy_files(self) -> None:
         if not self.generated:
