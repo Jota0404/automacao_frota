@@ -81,7 +81,37 @@ class App(BaseTk):
         style.map("Secondary.TButton", background=[("active", "#E1E7EE")])
         style.configure("Danger.TButton", font=("Segoe UI", 9, "bold"), padding=(12, 7), foreground=DANGER, background=DANGER_SOFT, borderwidth=0)
         style.map("Danger.TButton", background=[("active", "#FDD9D6")])
-        style.configure("Vertical.TScrollbar", troughcolor="#EDF1F5", background="#C6D0DC", arrowcolor="#667085", borderwidth=0)
+        style.configure(
+            "Vertical.TScrollbar",
+            troughcolor="#E9EEF5",
+            background="#B9C6D8",
+            bordercolor="#E9EEF5",
+            darkcolor="#B9C6D8",
+            lightcolor="#B9C6D8",
+            arrowsize=0,
+            width=10,
+        )
+        style.map(
+            "Vertical.TScrollbar",
+            background=[("pressed", PRIMARY_DARK), ("active", PRIMARY)],
+        )
+        style.layout(
+            "Vertical.TScrollbar",
+            [
+                (
+                    "Vertical.Scrollbar.trough",
+                    {
+                        "sticky": "ns",
+                        "children": [
+                            (
+                                "Vertical.Scrollbar.thumb",
+                                {"sticky": "ns", "expand": "1"},
+                            )
+                        ],
+                    },
+                )
+            ],
+        )
         style.configure("Horizontal.TProgressbar", troughcolor="#E8EDF3", background=PRIMARY, thickness=8)
 
     def _layout(self) -> None:
