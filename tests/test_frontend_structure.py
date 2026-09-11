@@ -22,6 +22,9 @@ def main() -> None:
     required = {
         "show_home",
         "select_csv",
+        "_on_drop",
+        "_selecionar_caminho",
+        "remove_csv",
         "start",
         "show_processing",
         "show_success",
