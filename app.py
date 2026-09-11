@@ -143,48 +143,36 @@ class App(BaseTk):
         ttk.Button(drop, text="Selecionar CSV", style="Secondary.TButton", command=self.select_csv).pack(pady=(12, 2))
 
         if DND_FILES is not None and hasattr(drop, "drop_target_register"):
-            drop.drop_target_register(DND_FILES)
-            drop.dnd_bind("<<Drop>>", self._on_drop)
+            self._registrar_drag_drop(drop)
 
         self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=18)
-        file_row = ttk.Frame(self.file_box, style="Card.TFrame")
-        file_row.pack(fill="x")
-
-        file_text = ttk.Frame(file_row, style="Card.TFrame")
-        file_text.pack(side="left", fill="x", expand=True)
-
-        self.file_name = ttk.Label(file_text, text="", style="File.TLabel")
-        self.file_info = ttk.Label(file_text, text="", style="CardText.TLabel")
-        self.file_name.pack(anchor="w")
-        self.file_info.pack(anchor="w", pady=(4, 0))
-
-        self.remove_button = ttk.Button(
-            file_row,
-            text="REMOVER",
-            style="Danger.TButton",
-            command=self.remove_csv,
-        )
-        self.remove_button.pack(side="right", padx=(16, 0))
-
+        self.file_name = ttk.Label(self.file_box, text="", style="File.TLabel")
+        self.file_info = ttk.Label(self.file_box, text="", style="CardText.TLabel")
+        self.file_name.pack(side="left", anchor="w", fill="x", expand=True)
+        self.file_info.pack(side="left", anchor="w", padx=(12, 12))
+        self.remove_button = ttk.Button(self.file_box, text="REMOVER", style="Danger.TButton", command=self.remove_csv)
+        self.remove_button.pack(side="right")
         self.file_box.pack_forget()
 
         actions = ttk.Frame(self.content, style="App.TFrame")
         actions.pack(fill="x")
-        self.generate = ttk.Button(
-            actions,
-            text="GERAR RELATÓRIOS",
-            style="Primary.TButton",
-            command=self.start,
-            state="disabled",
-        )
+        self.generate = ttk.Button(actions, text="GERAR RELATÓRIOS", style="Primary.TButton", command=self.start, state="disabled")
         self.generate.pack(side="left")
-        ttk.Label(
-            actions,
-            text="O CSV será processado e arquivado automaticamente.",
-            style="Subtitle.TLabel",
-        ).pack(side="left", padx=(14, 0))
+        ttk.Label(actions, text="O CSV será processado e arquivado automaticamente.", style="Subtitle.TLabel").pack(side="left", padx=(14, 0))
 
         self.after_idle(self._atualizar_scrollregion)
+
+    def _registrar_drag_drop(self, root_widget) -> None:
+        """Registra DnD no container e nos filhos para não perder eventos."""
+        root_widget.drop_target_register(DND_FILES)
+        root_widget.dnd_bind("<<Drop>>", self._on_drop)
+        for child in root_widget.winfo_children():
+            if hasattr(child, "drop_target_register"):
+                try:
+                    child.drop_target_register(DND_FILES)
+                    child.dnd_bind("<<Drop>>", self._on_drop)
+                except tk.TclError:
+                    pass
 
     def select_csv(self) -> None:
         selected = filedialog.askopenfilename(
@@ -223,8 +211,6 @@ class App(BaseTk):
         self.after_idle(self._atualizar_scrollregion)
 
     def remove_csv(self) -> None:
-        if self.processing:
-            return
         self.csv = None
         self.file_name.configure(text="")
         self.file_info.configure(text="")
@@ -244,11 +230,7 @@ class App(BaseTk):
         self.clear()
         card = self.card()
         ttk.Label(card, text="Gerando relatórios...", style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(
-            card,
-            text="O sistema está processando o arquivo e gerando os documentos.",
-            style="CardText.TLabel",
-        ).pack(anchor="w", pady=(5, 22))
+        ttk.Label(card, text="O sistema está processando o arquivo e gerando os documentos.", style="CardText.TLabel").pack(anchor="w", pady=(5, 22))
         self.progress = ttk.Progressbar(card, mode="indeterminate", style="Progress.Horizontal.TProgressbar")
         self.progress.pack(fill="x", pady=(0, 18))
         self.progress.start(10)
@@ -278,11 +260,7 @@ class App(BaseTk):
             with redirect_stdout(out), redirect_stderr(err):
                 success = processamento.processar_arquivo_csv(staged)
 
-            generated = [
-                path
-                for path in config.PASTA_RELATORIOS_GERADOS.glob("*")
-                if path.is_file() and path.stat().st_mtime >= started
-            ]
+            generated = [path for path in config.PASTA_RELATORIOS_GERADOS.glob("*") if path.is_file() and path.stat().st_mtime >= started]
             for path, old_mtime in before.items():
                 if path.exists() and path not in generated and path.stat().st_mtime > old_mtime:
                     generated.append(path)
@@ -315,27 +293,12 @@ class App(BaseTk):
         ttk.Label(card, text="✓", style="Success.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
         ttk.Label(card, text="Relatórios gerados!", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(card, text=f"{len(self.generated)} arquivo(s) foram gerados com sucesso.", style="CardText.TLabel").pack(anchor="w", pady=(0, 18))
-
         listing = tk.Frame(card, bg="#F7F9FC", highlightbackground="#E1E6ED", highlightthickness=1)
         listing.pack(fill="x")
         for path in self.generated:
-            tk.Label(
-                listing,
-                text=f"• {path.name}",
-                bg="#F7F9FC",
-                fg="#344054",
-                anchor="w",
-                font=("Segoe UI", 9),
-            ).pack(fill="x", padx=14, pady=5)
+            tk.Label(listing, text=f"• {path.name}", bg="#F7F9FC", fg="#344054", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=5)
         if not self.generated:
-            tk.Label(
-                listing,
-                text="Processamento concluído, mas nenhum arquivo foi localizado.",
-                bg="#F7F9FC",
-                fg="#697386",
-                anchor="w",
-                font=("Segoe UI", 9),
-            ).pack(fill="x", padx=14, pady=12)
+            tk.Label(listing, text="Processamento concluído, mas nenhum arquivo foi localizado.", bg="#F7F9FC", fg="#697386", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=12)
 
         actions = ttk.Frame(self.content, style="App.TFrame")
         actions.pack(fill="x", pady=(4, 0))
@@ -350,21 +313,9 @@ class App(BaseTk):
         ttk.Label(card, text="!", style="Error.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
         ttk.Label(card, text="Não foi possível gerar os relatórios", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(card, text="Confira os detalhes abaixo.", style="CardText.TLabel").pack(anchor="w", pady=(0, 14))
-
         box = tk.Frame(card, bg="#FFF5F5", highlightbackground="#F1C5C5", highlightthickness=1)
         box.pack(fill="both", expand=True)
-        text = tk.Text(
-            box,
-            height=12,
-            wrap="word",
-            bg="#FFF5F5",
-            fg="#7A271A",
-            relief="flat",
-            borderwidth=0,
-            font=("Consolas", 9),
-            padx=12,
-            pady=10,
-        )
+        text = tk.Text(box, height=12, wrap="word", bg="#FFF5F5", fg="#7A271A", relief="flat", borderwidth=0, font=("Consolas", 9), padx=12, pady=10)
         text.pack(fill="both", expand=True)
         text.insert("1.0", detail)
         text.configure(state="disabled")
