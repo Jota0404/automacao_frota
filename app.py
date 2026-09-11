@@ -1,7 +1,7 @@
 """Aplicativo desktop da Automação de Frota.
 
-Esta é a camada de apresentação do sistema. O motor de negócio continua em
-main.py/services.py/database.py e pode ser executado separadamente.
+Camada de apresentação separada do motor existente em main.py,
+services.py e database.py.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from tkinter import filedialog, messagebox, ttk
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
-except ImportError:  # pragma: no cover - fallback para ambientes sem suporte DnD
+except ImportError:  # pragma: no cover - permite desenvolvimento sem DnD instalado
     DND_FILES = None
     TkinterDnD = None
 
@@ -35,70 +35,103 @@ class App(BaseTk):
     def __init__(self) -> None:
         super().__init__()
         self.title(TITLE)
-        self.geometry("820x620")
-        self.minsize(720, 560)
+        self.geometry("820x650")
+        self.minsize(700, 520)
         self.configure(bg="#F4F6F8")
         self.csv: Path | None = None
         self.generated: list[Path] = []
         self.processing = False
+
         self._style()
         self._layout()
         self.show_home()
 
     def _style(self) -> None:
-        s = ttk.Style(self)
+        style = ttk.Style(self)
         try:
-            s.theme_use("clam")
+            style.theme_use("clam")
         except tk.TclError:
             pass
-        s.configure("App.TFrame", background="#F4F6F8")
-        s.configure("Card.TFrame", background="#FFFFFF")
-        s.configure("Title.TLabel", background="#F4F6F8", foreground="#172033", font=("Segoe UI", 24, "bold"))
-        s.configure("Subtitle.TLabel", background="#F4F6F8", foreground="#697386", font=("Segoe UI", 11))
-        s.configure("CardTitle.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 14, "bold"))
-        s.configure("CardText.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
-        s.configure("File.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 11, "bold"))
-        s.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(22, 10), foreground="#FFFFFF", background="#1F5EFF", borderwidth=0)
-        s.map("Primary.TButton", background=[("active", "#184DDB"), ("disabled", "#AEB8C8")])
-        s.configure("Secondary.TButton", font=("Segoe UI", 10), padding=(16, 8), foreground="#172033", background="#EEF1F5", borderwidth=0)
-        s.map("Secondary.TButton", background=[("active", "#E1E6ED")])
-        s.configure("Success.TLabel", background="#FFFFFF", foreground="#15803D", font=("Segoe UI", 14, "bold"))
-        s.configure("Error.TLabel", background="#FFFFFF", foreground="#B42318", font=("Segoe UI", 14, "bold"))
-        s.configure("Status.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
-        s.configure("Progress.Horizontal.TProgressbar", troughcolor="#E9EDF3", background="#1F5EFF", thickness=8)
+
+        style.configure("App.TFrame", background="#F4F6F8")
+        style.configure("Card.TFrame", background="#FFFFFF")
+        style.configure("Title.TLabel", background="#F4F6F8", foreground="#172033", font=("Segoe UI", 24, "bold"))
+        style.configure("Subtitle.TLabel", background="#F4F6F8", foreground="#697386", font=("Segoe UI", 11))
+        style.configure("CardTitle.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 14, "bold"))
+        style.configure("CardText.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
+        style.configure("File.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 11, "bold"))
+        style.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(22, 10), foreground="#FFFFFF", background="#1F5EFF", borderwidth=0)
+        style.map("Primary.TButton", background=[("active", "#184DDB"), ("disabled", "#AEB8C8")])
+        style.configure("Secondary.TButton", font=("Segoe UI", 10), padding=(16, 8), foreground="#172033", background="#EEF1F5", borderwidth=0)
+        style.map("Secondary.TButton", background=[("active", "#E1E6ED")])
+        style.configure("Success.TLabel", background="#FFFFFF", foreground="#15803D", font=("Segoe UI", 14, "bold"))
+        style.configure("Error.TLabel", background="#FFFFFF", foreground="#B42318", font=("Segoe UI", 14, "bold"))
+        style.configure("Status.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
+        style.configure("Progress.Horizontal.TProgressbar", troughcolor="#E9EDF3", background="#1F5EFF", thickness=8)
+        style.configure("Vertical.TScrollbar", troughcolor="#EEF1F5", background="#C7D0DC", arrowcolor="#697386")
 
     def _layout(self) -> None:
-        root = ttk.Frame(self, style="App.TFrame", padding=(42, 34, 42, 28))
+        root = ttk.Frame(self, style="App.TFrame", padding=(34, 26, 26, 22))
         root.pack(fill="both", expand=True)
+
         header = ttk.Frame(root, style="App.TFrame")
-        header.pack(fill="x", pady=(0, 26))
+        header.pack(fill="x", pady=(0, 18))
         ttk.Label(header, text=TITLE, style="Title.TLabel").pack(anchor="w")
         ttk.Label(header, text=SUBTITLE, style="Subtitle.TLabel").pack(anchor="w", pady=(4, 0))
-        self.content = ttk.Frame(root, style="App.TFrame")
-        self.content.pack(fill="both", expand=True)
+
+        body = ttk.Frame(root, style="App.TFrame")
+        body.pack(fill="both", expand=True)
+
+        self.canvas = tk.Canvas(body, background="#F4F6F8", highlightthickness=0, borderwidth=0)
+        self.scrollbar = ttk.Scrollbar(body, orient="vertical", command=self.canvas.yview, style="Vertical.TScrollbar")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.content = ttk.Frame(self.canvas, style="App.TFrame")
+        self.window_id = self.canvas.create_window((0, 0), window=self.content, anchor="nw")
+
+        self.content.bind("<Configure>", self._atualizar_scrollregion)
+        self.canvas.bind("<Configure>", self._redimensionar_conteudo)
+        self.canvas.bind_all("<MouseWheel>", self._scroll_mouse)
+
+    def _atualizar_scrollregion(self, _event=None) -> None:
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _redimensionar_conteudo(self, event) -> None:
+        self.canvas.itemconfigure(self.window_id, width=event.width)
+
+    def _scroll_mouse(self, event) -> None:
+        # Só desloca quando há conteúdo além da área visível.
+        first, last = self.canvas.yview()
+        if (event.delta > 0 and first > 0) or (event.delta < 0 and last < 1):
+            self.canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def clear(self) -> None:
         for widget in self.content.winfo_children():
             widget.destroy()
+        self.canvas.yview_moveto(0)
 
     def card(self) -> ttk.Frame:
-        card = ttk.Frame(self.content, style="Card.TFrame", padding=28)
-        card.pack(fill="x", pady=(0, 18))
+        card = ttk.Frame(self.content, style="Card.TFrame", padding=24)
+        card.pack(fill="x", pady=(0, 14))
         return card
 
     def show_home(self) -> None:
         self.clear()
+
         card = self.card()
         ttk.Label(card, text="Novo processamento", style="CardTitle.TLabel").pack(anchor="w")
         ttk.Label(
             card,
             text="Selecione o relatório CSV mensal exportado do Prime Benefícios.",
             style="CardText.TLabel",
-        ).pack(anchor="w", pady=(5, 20))
+        ).pack(anchor="w", pady=(5, 16))
 
         drop = tk.Frame(card, bg="#F7F9FC", highlightbackground="#D7DEE8", highlightthickness=1)
-        drop.pack(fill="x", ipady=28)
-        tk.Label(drop, text="CSV", bg="#F7F9FC", fg="#1F5EFF", font=("Segoe UI", 20, "bold")).pack(pady=(4, 8))
+        drop.pack(fill="x", ipady=24)
+
+        tk.Label(drop, text="CSV", bg="#F7F9FC", fg="#1F5EFF", font=("Segoe UI", 20, "bold")).pack(pady=(2, 6))
         tk.Label(
             drop,
             text="Arraste e solte o arquivo aqui ou selecione manualmente",
@@ -106,13 +139,13 @@ class App(BaseTk):
             fg="#697386",
             font=("Segoe UI", 10),
         ).pack()
-        ttk.Button(drop, text="Selecionar CSV", style="Secondary.TButton", command=self.select_csv).pack(pady=(14, 4))
+        ttk.Button(drop, text="Selecionar CSV", style="Secondary.TButton", command=self.select_csv).pack(pady=(12, 2))
 
         if DND_FILES is not None and hasattr(drop, "drop_target_register"):
             drop.drop_target_register(DND_FILES)
             drop.dnd_bind("<<Drop>>", self._on_drop)
 
-        self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=22)
+        self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=18)
         self.file_name = ttk.Label(self.file_box, text="", style="File.TLabel")
         self.file_info = ttk.Label(self.file_box, text="", style="CardText.TLabel")
         self.file_name.pack(anchor="w")
@@ -125,6 +158,8 @@ class App(BaseTk):
         self.generate.pack(side="left")
         ttk.Label(actions, text="O CSV será processado e arquivado automaticamente.", style="Subtitle.TLabel").pack(side="left", padx=(14, 0))
 
+        self.after_idle(self._atualizar_scrollregion)
+
     def select_csv(self) -> None:
         selected = filedialog.askopenfilename(
             title="Selecionar relatório CSV",
@@ -135,16 +170,16 @@ class App(BaseTk):
 
     def _on_drop(self, event) -> None:
         try:
-            caminhos = self.tk.splitlist(event.data)
+            paths = self.tk.splitlist(event.data)
         except tk.TclError:
-            caminhos = [event.data]
+            paths = [event.data]
 
-        csv_paths = [Path(caminho) for caminho in caminhos if caminho]
-        if len(csv_paths) != 1:
+        arquivos = [Path(path) for path in paths if path]
+        if len(arquivos) != 1:
             messagebox.showwarning(TITLE, "Arraste apenas um arquivo CSV por vez.")
             return
 
-        self._selecionar_caminho(csv_paths[0])
+        self._selecionar_caminho(arquivos[0])
 
     def _selecionar_caminho(self, path: Path) -> None:
         if path.suffix.lower() != ".csv":
@@ -155,10 +190,11 @@ class App(BaseTk):
             return
 
         self.csv = path
-        self.file_box.pack(fill="x", pady=(0, 18))
+        self.file_box.pack(fill="x", pady=(0, 14))
         self.file_name.configure(text=path.name)
         self.file_info.configure(text=f"{path.stat().st_size / 1024:,.1f} KB • Pronto para processamento")
         self.generate.configure(state="normal")
+        self.after_idle(self._atualizar_scrollregion)
 
     def start(self) -> None:
         if self.processing or self.csv is None:
@@ -177,6 +213,7 @@ class App(BaseTk):
         self.progress.pack(fill="x", pady=(0, 18))
         self.progress.start(10)
         ttk.Label(card, text="Processando CSV...", style="Status.TLabel").pack(anchor="w")
+        self.after_idle(self._atualizar_scrollregion)
 
     def _worker(self) -> None:
         assert self.csv is not None
@@ -246,6 +283,7 @@ class App(BaseTk):
         ttk.Button(actions, text="ABRIR PASTA", style="Secondary.TButton", command=self.open_folder).pack(side="left")
         ttk.Button(actions, text="COPIAR ARQUIVOS", style="Primary.TButton", command=self.copy_files).pack(side="left", padx=(10, 0))
         ttk.Button(actions, text="NOVO PROCESSAMENTO", style="Secondary.TButton", command=self.reset).pack(side="right")
+        self.after_idle(self._atualizar_scrollregion)
 
     def show_error(self, detail: str) -> None:
         self.clear()
@@ -264,6 +302,7 @@ class App(BaseTk):
         actions.pack(fill="x", pady=(4, 0))
         ttk.Button(actions, text="VOLTAR", style="Secondary.TButton", command=self.show_home).pack(side="left")
         ttk.Button(actions, text="NOVO PROCESSAMENTO", style="Primary.TButton", command=self.reset).pack(side="right")
+        self.after_idle(self._atualizar_scrollregion)
 
     def open_folder(self) -> None:
         config.PASTA_RELATORIOS_GERADOS.mkdir(parents=True, exist_ok=True)
