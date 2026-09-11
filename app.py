@@ -1,0 +1,258 @@
+"""Aplicativo desktop da Automação de Frota.
+
+Esta é a camada de apresentação do sistema. O motor de negócio continua em
+main.py/services.py/database.py e pode ser executado separadamente.
+"""
+from __future__ import annotations
+
+import io
+import os
+import shutil
+import threading
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime
+from pathlib import Path
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+import config
+import database
+import main as processamento
+
+TITLE = "Automação de Frota"
+SUBTITLE = "Controle e geração de relatórios de abastecimento"
+
+
+class App(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title(TITLE)
+        self.geometry("820x620")
+        self.minsize(720, 560)
+        self.configure(bg="#F4F6F8")
+        self.csv: Path | None = None
+        self.generated: list[Path] = []
+        self.processing = False
+        self._style()
+        self._layout()
+        self.show_home()
+
+    def _style(self) -> None:
+        s = ttk.Style(self)
+        try:
+            s.theme_use("clam")
+        except tk.TclError:
+            pass
+        s.configure("App.TFrame", background="#F4F6F8")
+        s.configure("Card.TFrame", background="#FFFFFF")
+        s.configure("Title.TLabel", background="#F4F6F8", foreground="#172033", font=("Segoe UI", 24, "bold"))
+        s.configure("Subtitle.TLabel", background="#F4F6F8", foreground="#697386", font=("Segoe UI", 11))
+        s.configure("CardTitle.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 14, "bold"))
+        s.configure("CardText.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
+        s.configure("File.TLabel", background="#FFFFFF", foreground="#172033", font=("Segoe UI", 11, "bold"))
+        s.configure("Primary.TButton", font=("Segoe UI", 11, "bold"), padding=(22, 10), foreground="#FFFFFF", background="#1F5EFF", borderwidth=0)
+        s.map("Primary.TButton", background=[("active", "#184DDB"), ("disabled", "#AEB8C8")])
+        s.configure("Secondary.TButton", font=("Segoe UI", 10), padding=(16, 8), foreground="#172033", background="#EEF1F5", borderwidth=0)
+        s.map("Secondary.TButton", background=[("active", "#E1E6ED")])
+        s.configure("Success.TLabel", background="#FFFFFF", foreground="#15803D", font=("Segoe UI", 14, "bold"))
+        s.configure("Error.TLabel", background="#FFFFFF", foreground="#B42318", font=("Segoe UI", 14, "bold"))
+        s.configure("Status.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
+        s.configure("Progress.Horizontal.TProgressbar", troughcolor="#E9EDF3", background="#1F5EFF", thickness=8)
+
+    def _layout(self) -> None:
+        root = ttk.Frame(self, style="App.TFrame", padding=(42, 34, 42, 28))
+        root.pack(fill="both", expand=True)
+        header = ttk.Frame(root, style="App.TFrame")
+        header.pack(fill="x", pady=(0, 26))
+        ttk.Label(header, text=TITLE, style="Title.TLabel").pack(anchor="w")
+        ttk.Label(header, text=SUBTITLE, style="Subtitle.TLabel").pack(anchor="w", pady=(4, 0))
+        self.content = ttk.Frame(root, style="App.TFrame")
+        self.content.pack(fill="both", expand=True)
+
+    def clear(self) -> None:
+        for w in self.content.winfo_children():
+            w.destroy()
+
+    def card(self) -> ttk.Frame:
+        c = ttk.Frame(self.content, style="Card.TFrame", padding=28)
+        c.pack(fill="x", pady=(0, 18))
+        return c
+
+    def show_home(self) -> None:
+        self.clear()
+        c = self.card()
+        ttk.Label(c, text="Novo processamento", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(c, text="Selecione o relatório CSV mensal exportado do Prime Benefícios.", style="CardText.TLabel").pack(anchor="w", pady=(5, 20))
+
+        drop = tk.Frame(c, bg="#F7F9FC", highlightbackground="#D7DEE8", highlightthickness=1)
+        drop.pack(fill="x", ipady=28)
+        tk.Label(drop, text="CSV", bg="#F7F9FC", fg="#1F5EFF", font=("Segoe UI", 20, "bold")).pack(pady=(4, 8))
+        tk.Label(drop, text="Selecione um arquivo .csv para iniciar", bg="#F7F9FC", fg="#697386", font=("Segoe UI", 10)).pack()
+        ttk.Button(drop, text="Selecionar CSV", style="Secondary.TButton", command=self.select_csv).pack(pady=(14, 4))
+
+        self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=22)
+        self.file_name = ttk.Label(self.file_box, text="", style="File.TLabel")
+        self.file_info = ttk.Label(self.file_box, text="", style="CardText.TLabel")
+        self.file_name.pack(anchor="w")
+        self.file_info.pack(anchor="w", pady=(4, 0))
+        self.file_box.pack_forget()
+
+        actions = ttk.Frame(self.content, style="App.TFrame")
+        actions.pack(fill="x")
+        self.generate = ttk.Button(actions, text="GERAR RELATÓRIOS", style="Primary.TButton", command=self.start, state="disabled")
+        self.generate.pack(side="left")
+        ttk.Label(actions, text="O CSV será processado e arquivado automaticamente.", style="Subtitle.TLabel").pack(side="left", padx=(14, 0))
+
+    def select_csv(self) -> None:
+        selected = filedialog.askopenfilename(title="Selecionar relatório CSV", filetypes=[("Arquivos CSV", "*.csv"), ("Todos os arquivos", "*.*")])
+        if not selected:
+            return
+        path = Path(selected)
+        if path.suffix.lower() != ".csv":
+            messagebox.showerror(TITLE, "Selecione um arquivo CSV válido.")
+            return
+        self.csv = path
+        self.file_box.pack(fill="x", pady=(0, 18))
+        self.file_name.configure(text=path.name)
+        self.file_info.configure(text=f"{path.stat().st_size / 1024:,.1f} KB • Pronto para processamento")
+        self.generate.configure(state="normal")
+
+    def start(self) -> None:
+        if self.processing or self.csv is None:
+            return
+        self.processing = True
+        self.generate.configure(state="disabled")
+        self.show_processing()
+        threading.Thread(target=self._worker, daemon=True).start()
+
+    def show_processing(self) -> None:
+        self.clear()
+        c = self.card()
+        ttk.Label(c, text="Gerando relatórios...", style="CardTitle.TLabel").pack(anchor="w")
+        ttk.Label(c, text="O sistema está processando o arquivo e gerando os documentos.", style="CardText.TLabel").pack(anchor="w", pady=(5, 22))
+        self.progress = ttk.Progressbar(c, mode="indeterminate", style="Progress.Horizontal.TProgressbar")
+        self.progress.pack(fill="x", pady=(0, 18))
+        self.progress.start(10)
+        ttk.Label(c, text="Processando CSV...", style="Status.TLabel").pack(anchor="w")
+
+    def _worker(self) -> None:
+        assert self.csv is not None
+        started = datetime.now().timestamp()
+        out, err = io.StringIO(), io.StringIO()
+        success = False
+        detail = ""
+        staged: Path | None = None
+        try:
+            for folder in config.TODAS_AS_PASTAS:
+                folder.mkdir(parents=True, exist_ok=True)
+            database.init_db()
+
+            staged = config.PASTA_ENTRADA / self.csv.name
+            if staged.exists():
+                stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                staged = config.PASTA_ENTRADA / f"{self.csv.stem}_{stamp}{self.csv.suffix}"
+            shutil.copy2(self.csv, staged)
+
+            before = {p: p.stat().st_mtime for p in config.PASTA_RELATORIOS_GERADOS.glob("*") if p.is_file()}
+            with redirect_stdout(out), redirect_stderr(err):
+                success = processamento.processar_arquivo_csv(staged)
+
+            generated = [p for p in config.PASTA_RELATORIOS_GERADOS.glob("*") if p.is_file() and p.stat().st_mtime >= started]
+            for path, old_mtime in before.items():
+                if path.exists() and path not in generated and path.stat().st_mtime > old_mtime:
+                    generated.append(path)
+            self.generated = sorted(set(generated), key=lambda p: p.name.lower())
+
+            if not success:
+                detail = out.getvalue().strip() or err.getvalue().strip() or "O arquivo não pôde ser processado."
+        except Exception as exc:  # noqa: BLE001
+            detail = str(exc)
+            if staged is not None and staged.exists():
+                try:
+                    staged.unlink()
+                except OSError:
+                    pass
+        self.after(0, self.finish, success, detail)
+
+    def finish(self, success: bool, detail: str) -> None:
+        self.processing = False
+        if hasattr(self, "progress"):
+            self.progress.stop()
+        if success:
+            self.show_success()
+        else:
+            self.show_error(detail)
+
+    def show_success(self) -> None:
+        self.clear()
+        c = self.card()
+        ttk.Label(c, text="✓", style="Success.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
+        ttk.Label(c, text="Relatórios gerados!", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
+        ttk.Label(c, text=f"{len(self.generated)} arquivo(s) foram gerados com sucesso.", style="CardText.TLabel").pack(anchor="w", pady=(0, 18))
+        listing = tk.Frame(c, bg="#F7F9FC", highlightbackground="#E1E6ED", highlightthickness=1)
+        listing.pack(fill="x")
+        for path in self.generated:
+            tk.Label(listing, text=f"• {path.name}", bg="#F7F9FC", fg="#344054", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=5)
+        if not self.generated:
+            tk.Label(listing, text="Processamento concluído, mas nenhum arquivo foi localizado.", bg="#F7F9FC", fg="#697386", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=12)
+
+        actions = ttk.Frame(self.content, style="App.TFrame")
+        actions.pack(fill="x", pady=(4, 0))
+        ttk.Button(actions, text="ABRIR PASTA", style="Secondary.TButton", command=self.open_folder).pack(side="left")
+        ttk.Button(actions, text="COPIAR ARQUIVOS", style="Primary.TButton", command=self.copy_files).pack(side="left", padx=(10, 0))
+        ttk.Button(actions, text="NOVO PROCESSAMENTO", style="Secondary.TButton", command=self.reset).pack(side="right")
+
+    def show_error(self, detail: str) -> None:
+        self.clear()
+        c = self.card()
+        ttk.Label(c, text="!", style="Error.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
+        ttk.Label(c, text="Não foi possível gerar os relatórios", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
+        ttk.Label(c, text="Confira os detalhes abaixo.", style="CardText.TLabel").pack(anchor="w", pady=(0, 14))
+        box = tk.Frame(c, bg="#FFF5F5", highlightbackground="#F1C5C5", highlightthickness=1)
+        box.pack(fill="both", expand=True)
+        text = tk.Text(box, height=12, wrap="word", bg="#FFF5F5", fg="#7A271A", relief="flat", borderwidth=0, font=("Consolas", 9), padx=12, pady=10)
+        text.pack(fill="both", expand=True)
+        text.insert("1.0", detail)
+        text.configure(state="disabled")
+        actions = ttk.Frame(self.content, style="App.TFrame")
+        actions.pack(fill="x", pady=(4, 0))
+        ttk.Button(actions, text="VOLTAR", style="Secondary.TButton", command=self.show_home).pack(side="left")
+        ttk.Button(actions, text="NOVO PROCESSAMENTO", style="Primary.TButton", command=self.reset).pack(side="right")
+
+    def open_folder(self) -> None:
+        config.PASTA_RELATORIOS_GERADOS.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(config.PASTA_RELATORIOS_GERADOS))
+        except AttributeError:
+            messagebox.showinfo(TITLE, str(config.PASTA_RELATORIOS_GERADOS))
+
+    def copy_files(self) -> None:
+        if not self.generated:
+            messagebox.showwarning(TITLE, "Nenhum arquivo gerado foi localizado para copiar.")
+            return
+        target = filedialog.askdirectory(title="Escolher pasta de destino")
+        if not target:
+            return
+        destination = Path(target)
+        try:
+            count = 0
+            for path in self.generated:
+                if path.exists():
+                    shutil.copy2(path, destination / path.name)
+                    count += 1
+            messagebox.showinfo(TITLE, f"{count} arquivo(s) copiado(s) com sucesso para:\n{destination}")
+        except OSError as exc:
+            messagebox.showerror(TITLE, f"Não foi possível copiar os arquivos:\n\n{exc}")
+
+    def reset(self) -> None:
+        self.csv = None
+        self.generated = []
+        self.show_home()
+
+
+def main() -> None:
+    App().mainloop()
+
+
+if __name__ == "__main__":
+    main()
