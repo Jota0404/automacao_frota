@@ -49,6 +49,7 @@ def main() -> None:
     }
     all_imports = imports | import_from
     assert "tkinter" in all_imports, "Tkinter não encontrado"
+    assert "tkinterdnd2" in all_imports, "TkinterDnD2 não encontrado"
     assert "main" in all_imports, "Motor principal não encontrado"
     assert "database" in all_imports, "Camada de banco não encontrada"
     assert "config" in all_imports, "Configuração não encontrada"
