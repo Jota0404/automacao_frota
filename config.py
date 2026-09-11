@@ -16,16 +16,22 @@ aqui — este arquivo é apenas de configuração/constantes, para ser
 importado pelos demais módulos do sistema (ex.: main.py, db.py, etc.).
 """
 
+import sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # CAMINHOS BASE DO PROJETO
 # ---------------------------------------------------------------------------
 
-# Diretório raiz do projeto (pasta onde este arquivo config.py está localizado).
-# Usar Path(__file__).resolve().parent garante que os caminhos funcionem
-# corretamente independentemente de onde o script for executado.
-BASE_DIR = Path(__file__).resolve().parent
+# Quando executado como script Python, usa a pasta do próprio config.py.
+# Quando empacotado como executável pelo PyInstaller (sys.frozen=True),
+# usa a pasta onde o .exe está localizado. Isso evita que os diretórios
+# de trabalho sejam resolvidos para a pasta temporária _MEI... criada pelo
+# modo --onefile.
+if getattr(sys, "frozen", False):
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent
 
 # Pasta onde o relatório CSV mensal do portal "Prime Benefícios" deve ser
 # depositado para processamento (entrada dos dados brutos).
