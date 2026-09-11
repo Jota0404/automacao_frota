@@ -64,6 +64,8 @@ class App(BaseTk):
         style.map("Primary.TButton", background=[("active", "#184DDB"), ("disabled", "#AEB8C8")])
         style.configure("Secondary.TButton", font=("Segoe UI", 10), padding=(16, 8), foreground="#172033", background="#EEF1F5", borderwidth=0)
         style.map("Secondary.TButton", background=[("active", "#E1E6ED")])
+        style.configure("Danger.TButton", font=("Segoe UI", 9, "bold"), padding=(10, 6), foreground="#B42318", background="#FEE4E2", borderwidth=0)
+        style.map("Danger.TButton", background=[("active", "#FCCDCA")])
         style.configure("Success.TLabel", background="#FFFFFF", foreground="#15803D", font=("Segoe UI", 14, "bold"))
         style.configure("Error.TLabel", background="#FFFFFF", foreground="#B42318", font=("Segoe UI", 14, "bold"))
         style.configure("Status.TLabel", background="#FFFFFF", foreground="#697386", font=("Segoe UI", 10))
@@ -102,7 +104,6 @@ class App(BaseTk):
         self.canvas.itemconfigure(self.window_id, width=event.width)
 
     def _scroll_mouse(self, event) -> None:
-        # Só desloca quando há conteúdo além da área visível.
         first, last = self.canvas.yview()
         if (event.delta > 0 and first > 0) or (event.delta < 0 and last < 1):
             self.canvas.yview_scroll(int(-event.delta / 120), "units")
@@ -146,17 +147,42 @@ class App(BaseTk):
             drop.dnd_bind("<<Drop>>", self._on_drop)
 
         self.file_box = ttk.Frame(self.content, style="Card.TFrame", padding=18)
-        self.file_name = ttk.Label(self.file_box, text="", style="File.TLabel")
-        self.file_info = ttk.Label(self.file_box, text="", style="CardText.TLabel")
+        file_row = ttk.Frame(self.file_box, style="Card.TFrame")
+        file_row.pack(fill="x")
+
+        file_text = ttk.Frame(file_row, style="Card.TFrame")
+        file_text.pack(side="left", fill="x", expand=True)
+
+        self.file_name = ttk.Label(file_text, text="", style="File.TLabel")
+        self.file_info = ttk.Label(file_text, text="", style="CardText.TLabel")
         self.file_name.pack(anchor="w")
         self.file_info.pack(anchor="w", pady=(4, 0))
+
+        self.remove_button = ttk.Button(
+            file_row,
+            text="REMOVER",
+            style="Danger.TButton",
+            command=self.remove_csv,
+        )
+        self.remove_button.pack(side="right", padx=(16, 0))
+
         self.file_box.pack_forget()
 
         actions = ttk.Frame(self.content, style="App.TFrame")
         actions.pack(fill="x")
-        self.generate = ttk.Button(actions, text="GERAR RELATÓRIOS", style="Primary.TButton", command=self.start, state="disabled")
+        self.generate = ttk.Button(
+            actions,
+            text="GERAR RELATÓRIOS",
+            style="Primary.TButton",
+            command=self.start,
+            state="disabled",
+        )
         self.generate.pack(side="left")
-        ttk.Label(actions, text="O CSV será processado e arquivado automaticamente.", style="Subtitle.TLabel").pack(side="left", padx=(14, 0))
+        ttk.Label(
+            actions,
+            text="O CSV será processado e arquivado automaticamente.",
+            style="Subtitle.TLabel",
+        ).pack(side="left", padx=(14, 0))
 
         self.after_idle(self._atualizar_scrollregion)
 
@@ -196,6 +222,16 @@ class App(BaseTk):
         self.generate.configure(state="normal")
         self.after_idle(self._atualizar_scrollregion)
 
+    def remove_csv(self) -> None:
+        if self.processing:
+            return
+        self.csv = None
+        self.file_name.configure(text="")
+        self.file_info.configure(text="")
+        self.file_box.pack_forget()
+        self.generate.configure(state="disabled")
+        self.after_idle(self._atualizar_scrollregion)
+
     def start(self) -> None:
         if self.processing or self.csv is None:
             return
@@ -208,7 +244,11 @@ class App(BaseTk):
         self.clear()
         card = self.card()
         ttk.Label(card, text="Gerando relatórios...", style="CardTitle.TLabel").pack(anchor="w")
-        ttk.Label(card, text="O sistema está processando o arquivo e gerando os documentos.", style="CardText.TLabel").pack(anchor="w", pady=(5, 22))
+        ttk.Label(
+            card,
+            text="O sistema está processando o arquivo e gerando os documentos.",
+            style="CardText.TLabel",
+        ).pack(anchor="w", pady=(5, 22))
         self.progress = ttk.Progressbar(card, mode="indeterminate", style="Progress.Horizontal.TProgressbar")
         self.progress.pack(fill="x", pady=(0, 18))
         self.progress.start(10)
@@ -238,7 +278,11 @@ class App(BaseTk):
             with redirect_stdout(out), redirect_stderr(err):
                 success = processamento.processar_arquivo_csv(staged)
 
-            generated = [path for path in config.PASTA_RELATORIOS_GERADOS.glob("*") if path.is_file() and path.stat().st_mtime >= started]
+            generated = [
+                path
+                for path in config.PASTA_RELATORIOS_GERADOS.glob("*")
+                if path.is_file() and path.stat().st_mtime >= started
+            ]
             for path, old_mtime in before.items():
                 if path.exists() and path not in generated and path.stat().st_mtime > old_mtime:
                     generated.append(path)
@@ -271,12 +315,27 @@ class App(BaseTk):
         ttk.Label(card, text="✓", style="Success.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
         ttk.Label(card, text="Relatórios gerados!", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(card, text=f"{len(self.generated)} arquivo(s) foram gerados com sucesso.", style="CardText.TLabel").pack(anchor="w", pady=(0, 18))
+
         listing = tk.Frame(card, bg="#F7F9FC", highlightbackground="#E1E6ED", highlightthickness=1)
         listing.pack(fill="x")
         for path in self.generated:
-            tk.Label(listing, text=f"• {path.name}", bg="#F7F9FC", fg="#344054", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=5)
+            tk.Label(
+                listing,
+                text=f"• {path.name}",
+                bg="#F7F9FC",
+                fg="#344054",
+                anchor="w",
+                font=("Segoe UI", 9),
+            ).pack(fill="x", padx=14, pady=5)
         if not self.generated:
-            tk.Label(listing, text="Processamento concluído, mas nenhum arquivo foi localizado.", bg="#F7F9FC", fg="#697386", anchor="w", font=("Segoe UI", 9)).pack(fill="x", padx=14, pady=12)
+            tk.Label(
+                listing,
+                text="Processamento concluído, mas nenhum arquivo foi localizado.",
+                bg="#F7F9FC",
+                fg="#697386",
+                anchor="w",
+                font=("Segoe UI", 9),
+            ).pack(fill="x", padx=14, pady=12)
 
         actions = ttk.Frame(self.content, style="App.TFrame")
         actions.pack(fill="x", pady=(4, 0))
@@ -291,9 +350,21 @@ class App(BaseTk):
         ttk.Label(card, text="!", style="Error.TLabel", font=("Segoe UI", 26, "bold")).pack(anchor="w")
         ttk.Label(card, text="Não foi possível gerar os relatórios", style="CardTitle.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(card, text="Confira os detalhes abaixo.", style="CardText.TLabel").pack(anchor="w", pady=(0, 14))
+
         box = tk.Frame(card, bg="#FFF5F5", highlightbackground="#F1C5C5", highlightthickness=1)
         box.pack(fill="both", expand=True)
-        text = tk.Text(box, height=12, wrap="word", bg="#FFF5F5", fg="#7A271A", relief="flat", borderwidth=0, font=("Consolas", 9), padx=12, pady=10)
+        text = tk.Text(
+            box,
+            height=12,
+            wrap="word",
+            bg="#FFF5F5",
+            fg="#7A271A",
+            relief="flat",
+            borderwidth=0,
+            font=("Consolas", 9),
+            padx=12,
+            pady=10,
+        )
         text.pack(fill="both", expand=True)
         text.insert("1.0", detail)
         text.configure(state="disabled")
